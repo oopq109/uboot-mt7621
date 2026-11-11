@@ -114,14 +114,30 @@ jobs:
           ./customize.sh '${{ inputs.flash }}' '${{ inputs.mtdparts }}' '${{ inputs.kernel_offset }}' '${{ inputs.reset_pin }}' \
             '${{ inputs.sysled_pin }}' '${{ inputs.cpufreq }}' '${{ inputs.ramfreq }}' '${{ inputs.ddrparam }}' '${{ inputs.baudrate }}'
 
-      - name: Build flash image (u-boot-mt7621.bin)
+      - name: Assemble flash image (replace binman)
         working-directory: uboot-mt7621
         run: |
-          TC="$(cd ../openwrt-toolchain-*/toolchain-mipsel_24kc_gcc-12.3.0_musl/bin && pwd)/mipsel-openwrt-linux-"
-          ST="$(cd ../openwrt-toolchain-* && pwd)"
-          make CROSS_COMPILE="$TC" STAGING_DIR="$ST" u-boot-mt7621.bin
-          ls -l u-boot-mt7621.bin u-boot-lzma.img
-          cp -f u-boot-mt7621.bin u-boot-lzma.img archive/ 2>/dev/null || true
+          ALIGN=$(grep -E '^CONFIG_SPL_ALIGN_TO=' .config | cut -d= -f2)
+          ALIGN=${ALIGN:-0x10000}
+          echo "SPL_ALIGN_TO = $ALIGN"
+          ls -l u-boot-mt7621-spl.bin u-boot-lzma.img u-boot.bin
+          python3 - "$ALIGN" <<'PYEOF'
+          import sys, os
+          align = int(sys.argv[1], 0) or 0
+          spl = open('u-boot-mt7621-spl.bin', 'rb').read()
+          lz  = open('u-boot-lzma.img', 'rb').read()
+          pad = ((-len(spl)) % align) if align else 0
+          img = spl + b'\xff' * pad + lz
+          open('u-boot-mt7621.bin', 'wb').write(img)
+          print("spl      = %d bytes" % len(spl))
+          print("padding  = %d bytes" % pad)
+          print("lzma img = %d bytes" % len(lz))
+          print("total    = %d bytes (0x%X)" % (len(img), len(img)))
+          print("partition 0x30000 = 196608 ->", "OK" if len(img) <= 0x30000 else "TOO BIG")
+          os.makedirs('archive', exist_ok=True)
+          open('archive/u-boot-mt7621.bin', 'wb').write(img)
+          print("copied to archive/u-boot-mt7621.bin")
+          PYEOF
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
