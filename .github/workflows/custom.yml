@@ -97,6 +97,15 @@ jobs:
           wget -O - https://github.com/DragonBluep/uboot-mt7621/releases/download/20230517/openwrt-toolchain-ramips-mt7621_gcc-12.3.0_musl.Linux-x86_64.tar.xz \
             | tar --xz -xf -
 
+      - name: Patch pylibfdt version check
+        working-directory: uboot-mt7621
+        run: |
+          sed -i "s/^version = .*/version = '1.4.5'/" scripts/dtc/pylibfdt/setup.py
+          sed -i "s/^if not all((swig_opts, version, files, cflags, objdir)):/if False:/" scripts/dtc/pylibfdt/setup.py
+          echo "--- patched lines ---"
+          grep -n "^version = \|^if False" scripts/dtc/pylibfdt/setup.py
+          grep -q "^version = '1.4.5'" scripts/dtc/pylibfdt/setup.py || { echo "PATCH FAILED"; exit 1; }
+
       - name: Set old DDR timing parameters
         if:  ${{ inputs.oldparam }}
         working-directory: uboot-mt7621
